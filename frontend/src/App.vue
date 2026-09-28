@@ -6,6 +6,7 @@ import { caveStore } from '@/stores/caveStore'
 import { segmentStore } from '@/stores/segmentStore'
 import { stationStore } from '@/stores/stationStore'
 import { sketchStore } from '@/stores/sketchStore'
+import { handoverStore } from '@/stores/handoverStore'
 
 const route = useRoute()
 const caveState = useStore(caveStore)
@@ -35,6 +36,7 @@ onMounted(async () => {
   await segmentStore.getState().hydrate()
   await stationStore.getState().hydrate()
   await sketchStore.getState().hydrate()
+  await handoverStore.getState().hydrate()
 })
 </script>
 

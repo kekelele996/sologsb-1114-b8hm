@@ -9,13 +9,18 @@ import { useStore } from '@/hooks/usePersistentStore'
 import { useClosureCheck } from '@/hooks/useClosureCheck'
 import { segmentStore } from '@/stores/segmentStore'
 import { stationStore } from '@/stores/stationStore'
+import { sketchStore } from '@/stores/sketchStore'
+import { handoverStore } from '@/stores/handoverStore'
 import { caveStore } from '@/stores/caveStore'
 import { computeHorizontal, computeVertical, formatDms, isValidBearing, isValidDip } from '@/utils/survey'
+import { diffHandoverSnapshot } from '@/utils/handover'
 import { nextCode, uid } from '@/utils/id'
 
 const caveState = useStore(caveStore)
 const segmentState = useStore(segmentStore)
 const stationState = useStore(stationStore)
+const sketchState = useStore(sketchStore)
+const handoverState = useStore(handoverStore)
 
 const selectedCaveId = ref<string>(caveState.caves[0]?.id ?? '')
 const selectedSegmentId = ref<string>('')
@@ -39,6 +44,24 @@ const segmentOptions = computed(() =>
   segmentState.segments.filter((segment) => !selectedCaveId.value || segment.caveId === selectedCaveId.value)
 )
 const currentSegment = computed(() => segmentState.segments.find((segment) => segment.id === selectedSegmentId.value))
+
+const currentSnapshot = computed(() =>
+  handoverState.snapshots
+    .filter((snapshot) => snapshot.segmentId === selectedSegmentId.value)
+    .sort((a, b) => b.version - a.version)[0]
+)
+
+const snapshotDeviationCount = computed(() => {
+  const snapshot = currentSnapshot.value
+  const segment = currentSegment.value
+  if (!snapshot || !segment) return 0
+  return diffHandoverSnapshot(
+    snapshot,
+    segment,
+    segmentStations.value,
+    sketchState.sketches.filter((sketch) => sketch.segmentId === selectedSegmentId.value)
+  ).length
+})
 
 const segmentStations = computed(() =>
   stationState.stations
@@ -210,6 +233,12 @@ async function removeStation(station: Station): Promise<void> {
         />
       </el-select>
       <SegmentTag v-if="currentSegment" :type="currentSegment.type" :closed="currentSegment.closed" size="small" />
+      <el-tag v-if="currentSnapshot" type="success" effect="dark" size="small">
+        交接版本 v{{ currentSnapshot.version }}
+      </el-tag>
+      <el-tag v-if="currentSnapshot && snapshotDeviationCount > 0" type="warning" effect="plain" size="small">
+        快照后 {{ snapshotDeviationCount }} 项偏差
+      </el-tag>
       <el-button :disabled="!selectedSegmentId" @click="refreshDefaultCode">重算下一桩号</el-button>
     </div>
 

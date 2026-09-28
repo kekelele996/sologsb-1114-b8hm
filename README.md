@@ -61,8 +61,8 @@ sologsb-1114/
 │   ├── nginx.conf              # try_files 前端路由回落 + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/              # cave.ts / segment.ts / station.ts / sketch.ts / index.ts
-│       ├── stores/             # caveStore / segmentStore / stationStore / sketchStore（Zustand）
+│       ├── types/              # cave.ts / segment.ts / station.ts / sketch.ts / handover.ts / index.ts
+│       ├── stores/             # caveStore / segmentStore / stationStore / sketchStore / handoverStore（Zustand）
 │       ├── components/common/  # SegmentTag / BearingInput / ClosureBadge / GridCanvas
 │       ├── hooks/              # usePersistentStore / useClosureCheck
 │       ├── pages/              # CavesPage / SegmentsPage / StationsPage / SketchPage / MergePage
@@ -78,22 +78,32 @@ sologsb-1114/
 | Segment 洞段 | 起止桩号、类型（竖井/廊道/厅堂/裂隙/水道）、平均宽高、是否闭合 | `segments` |
 | Station 测点 | 方位角、倾角、斜距 → 自动推算水平距/垂距，累计闭合差 | `stations` |
 | Sketch 草图 | 格数、比例、绘制人、拼合顺序号、桩号对齐锚点 | `sketches` |
+| HandoverSnapshot 交接快照 | 冻结洞段起止桩号、类型、闭合标记、草图锚点和全部测点，保存递增交接版本 | `handoverSnapshots` |
 
 - 数据库名 `gbcavesurvey`，`meta` 表保存 `schemaVersion`；
 - `version(2)` 升级迁移会把旧版测点记录由「斜距 + 倾角」补齐 `horizontalDistance` / `verticalDistance`；
+- `version(3)` 新增 `handoverSnapshots` 表用于洞段交接快照；
 - 数据仅存于浏览器本地，容器无状态、不挂载命名卷，清除浏览器数据即清空。
 
-## 六、主要页面
+## 六、洞段交接快照
+
+- 只有已录入测点的洞段可以确认交接；
+- 确认时冻结起止桩号、洞段类型、闭合标记、草图锚点（含拼合顺序）和该洞段全部测点，并记录确认测量员、时间与递增版本号；
+- 后续任意页面修改这些数据，洞段表会显示偏差数量，交接面板逐项列出快照值与当前值；
+- 测量员可恢复任意历史版本：恢复后洞段字段、测点集合和草图锚点回到快照，闭合差徽标、草图与图幅拼合视图随响应式数据自动重算；
+- 恢复会移除该洞段在快照后新增的测点和草图，避免纸面记录与系统闭合结果继续脱节。
+
+## 七、主要页面
 
 | 路由 | 功能 |
 | --- | --- |
 | `/caves` | 洞穴清单：卡片展示实测/已知总长、洞段数、最近测量日期，支持新建、编辑、归档、删除（删除前校验下级洞段数） |
-| `/segments` | 洞段编目表：按桩号区间/类型/洞穴筛选，批量调整洞段类型与闭合标记，自动累计总长 |
+| `/segments` | 洞段编目表：按桩号区间/类型/洞穴筛选，批量调整洞段类型与闭合标记，自动累计总长；确认交接时保存快照，显示版本与后续偏差，支持恢复快照 |
 | `/stations` | 测点读数录入：方位角/倾角专用输入（度分秒 ⇄ 十进制度），自动推算水平距垂距，实时闭合差徽标，异常读数整行高亮，支持连续录入下一站 |
 | `/sketch` | 草图工作台：坐标纸网格上绘制测点折线、标注桩号与倾角箭头，支持草图基准方位旋转与草图记录管理 |
 | `/merge` | 图幅拼合视图：拖动图幅按相邻边缘吸附、按桩号锚点一键对齐，输出可调整的拼合顺序表并支持 CSV 导出 |
 
-## 七、计算约定
+## 八、计算约定
 
 - 水平距 = 斜距 × cos(倾角)，垂距 = 斜距 × sin(倾角)；
 - 闭合差 f = √(ΣΔE² + ΣΔN²)，默认阈值 0.25 m，超限时徽标变红并可展开计算过程；

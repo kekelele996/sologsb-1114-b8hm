@@ -1,11 +1,11 @@
 import { onUnmounted, reactive } from 'vue'
 import type { StoreApi } from 'zustand/vanilla'
 import Dexie, { type Table } from 'dexie'
-import type { Cave, Segment, Sketch, Station } from '@/types'
+import type { Cave, HandoverSnapshot, Segment, Sketch, Station } from '@/types'
 import { computeHorizontal, computeVertical } from '@/utils/survey'
 
 /** IndexedDB 数据结构版本号（升级迁移时使用） */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
@@ -18,6 +18,7 @@ class CaveSurveyDb extends Dexie {
   segments!: Table<Segment, string>
   stations!: Table<Station, string>
   sketches!: Table<Sketch, string>
+  handoverSnapshots!: Table<HandoverSnapshot, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -51,6 +52,15 @@ class CaveSurveyDb extends Dexie {
             }
           })
       })
+    // v3：新增洞段交接快照表
+    this.version(SCHEMA_VERSION).stores({
+      caves: 'id, name, region, archived',
+      segments: 'id, caveId, code, type',
+      stations: 'id, segmentId, code, date',
+      sketches: 'id, segmentId, code, mergeOrder',
+      handoverSnapshots: 'id, segmentId, version, confirmedAt',
+      meta: 'key'
+    })
   }
 }
 
@@ -154,7 +164,33 @@ export async function seedDemoData(): Promise<void> {
     }
   ])
 
-  await db.stations.bulkPut([
+  const demoSketches = [
+    {
+      id: 'sk_demo_001',
+      segmentId: segmentA,
+      code: 'S-01',
+      gridCount: 48,
+      scale: 200,
+      author: '陆昀',
+      mergeOrder: 1,
+      anchorStake: 'K0+000',
+      imageNote: '平面展开草图，坐标纸 48 格，含左壁支护标注'
+    },
+    {
+      id: 'sk_demo_002',
+      segmentId: segmentB,
+      code: 'S-02',
+      gridCount: 30,
+      scale: 200,
+      author: '覃羽',
+      mergeOrder: 2,
+      anchorStake: 'K0+120',
+      imageNote: '竖井剖面草图，标注三处锚点'
+    }
+  ]
+  await db.sketches.bulkPut(demoSketches)
+
+  const demoStations = [
     {
       id: 'st_demo_001',
       segmentId: segmentA,
@@ -185,30 +221,27 @@ export async function seedDemoData(): Promise<void> {
       isClosurePoint: true,
       note: '本段末站，已与 C-02 起点核对'
     }
-  ])
+  ]
+  await db.stations.bulkPut(demoStations)
 
-  await db.sketches.bulkPut([
-    {
-      id: 'sk_demo_001',
-      segmentId: segmentA,
-      code: 'S-01',
-      gridCount: 48,
-      scale: 200,
-      author: '陆昀',
-      mergeOrder: 1,
-      anchorStake: 'K0+000',
-      imageNote: '平面展开草图，坐标纸 48 格，含左壁支护标注'
-    },
-    {
-      id: 'sk_demo_002',
-      segmentId: segmentB,
-      code: 'S-02',
-      gridCount: 30,
-      scale: 200,
-      author: '覃羽',
-      mergeOrder: 2,
-      anchorStake: 'K0+120',
-      imageNote: '竖井剖面草图，标注三处锚点'
-    }
-  ])
+  await db.handoverSnapshots.put({
+    id: 'hs_demo_001',
+    segmentId: segmentA,
+    version: 1,
+    startStake: 'K0+000',
+    endStake: 'K0+120',
+    type: '廊道',
+    closed: false,
+    sketchAnchors: [
+      {
+        sketchId: 'sk_demo_001',
+        sketchCode: 'S-01',
+        anchorStake: 'K0+000',
+        mergeOrder: 1
+      }
+    ],
+    stations: demoStations.map((station) => ({ ...station })),
+    confirmedBy: '陆昀',
+    confirmedAt: new Date().toISOString()
+  })
 }

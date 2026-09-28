@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla'
 import type { Segment, SegmentType } from '@/types'
 import { db, syncAll, syncDelete, syncPut } from '@/hooks/usePersistentStore'
+import { handoverStore } from '@/stores/handoverStore'
 
 export interface SegmentState {
   segments: Segment[]
@@ -27,6 +28,7 @@ export const segmentStore = createStore<SegmentState>((set, get) => ({
   },
   remove: async (id) => {
     await syncDelete<Segment>(db.segments, id)
+    await handoverStore.getState().removeBySegment(id)
     await get().hydrate()
   },
   removeByCave: async (caveId) => {
@@ -34,6 +36,8 @@ export const segmentStore = createStore<SegmentState>((set, get) => ({
       .segments.filter((item) => item.caveId === caveId)
       .map((item) => item.id)
     await db.segments.bulkDelete(ids)
+    await Promise.all(ids.map((id) => db.handoverSnapshots.where('segmentId').equals(id).delete()))
+    await handoverStore.getState().hydrate()
     await get().hydrate()
   },
   bulkSetType: async (ids, type) => {
