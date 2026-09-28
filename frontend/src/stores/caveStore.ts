@@ -30,6 +30,18 @@ export const caveStore = createStore<CaveState>((set, get) => ({
     await get().hydrate()
   },
   remove: async (id) => {
+    // 级联清理洞穴下的洞段、测点、草图与交接快照
+    const segments = await db.segments.where('caveId').equals(id).toArray()
+    const segmentIds = segments.map((segment) => segment.id)
+    if (segmentIds.length > 0) {
+      const stations = await db.stations.where('segmentId').anyOf(segmentIds).toArray()
+      await db.stations.bulkDelete(stations.map((station) => station.id))
+      const sketches = await db.sketches.where('segmentId').anyOf(segmentIds).toArray()
+      await db.sketches.bulkDelete(sketches.map((sketch) => sketch.id))
+      const snapshots = await db.handoverSnapshots.where('segmentId').anyOf(segmentIds).toArray()
+      await db.handoverSnapshots.bulkDelete(snapshots.map((snapshot) => snapshot.id))
+      await db.segments.bulkDelete(segmentIds)
+    }
     await syncDelete<Cave>(db.caves, id)
     await get().hydrate()
   }

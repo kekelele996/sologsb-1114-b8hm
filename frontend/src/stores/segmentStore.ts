@@ -27,13 +27,24 @@ export const segmentStore = createStore<SegmentState>((set, get) => ({
   },
   remove: async (id) => {
     await syncDelete<Segment>(db.segments, id)
+    // 级联清理该洞段的测点与交接快照
+    const stationIds = (await db.stations.where('segmentId').equals(id).toArray()).map((item) => item.id)
+    await db.stations.bulkDelete(stationIds)
+    const snapshotIds = (await db.handoverSnapshots.where('segmentId').equals(id).toArray()).map((item) => item.id)
+    await db.handoverSnapshots.bulkDelete(snapshotIds)
     await get().hydrate()
   },
   removeByCave: async (caveId) => {
     const ids = get()
       .segments.filter((item) => item.caveId === caveId)
       .map((item) => item.id)
+    if (ids.length === 0) return
     await db.segments.bulkDelete(ids)
+    // 级联清理这些洞段的测点与交接快照
+    const stations = await db.stations.where('segmentId').anyOf(ids).toArray()
+    await db.stations.bulkDelete(stations.map((item) => item.id))
+    const snapshots = await db.handoverSnapshots.where('segmentId').anyOf(ids).toArray()
+    await db.handoverSnapshots.bulkDelete(snapshots.map((item) => item.id))
     await get().hydrate()
   },
   bulkSetType: async (ids, type) => {

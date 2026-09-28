@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Segment, SegmentType } from '@/types'
 import { SEGMENT_TYPES, segmentLength } from '@/types'
@@ -8,12 +9,15 @@ import { useStore } from '@/hooks/usePersistentStore'
 import { caveStore } from '@/stores/caveStore'
 import { segmentStore } from '@/stores/segmentStore'
 import { stationStore } from '@/stores/stationStore'
+import { handoverStore } from '@/stores/handoverStore'
 import { stakeRangeOverlap, stakeToNumber } from '@/utils/survey'
 import { uid } from '@/utils/id'
 
+const router = useRouter()
 const caveState = useStore(caveStore)
 const segmentState = useStore(segmentStore)
 const stationState = useStore(stationStore)
+const handoverState = useStore(handoverStore)
 
 const filterCaveId = ref<string>('')
 const filterType = ref<SegmentType | ''>('')
@@ -61,6 +65,17 @@ function caveName(caveId: string): string {
 
 function stationCount(segmentId: string): number {
   return stationState.stations.filter((station) => station.segmentId === segmentId).length
+}
+
+/** 该洞段最新交接版本号（无快照返回 0） */
+function handoverVersion(segmentId: string): number {
+  return handoverState.snapshots
+    .filter((snapshot) => snapshot.segmentId === segmentId)
+    .reduce((max, snapshot) => Math.max(max, snapshot.version), 0)
+}
+
+function openHandover(segmentId: string): void {
+  void router.push({ path: '/handover', query: { segment: segmentId } })
 }
 
 function resetForm(): void {
@@ -153,6 +168,10 @@ async function removeSegment(segment: Segment): Promise<void> {
     ElMessage.error(`洞段「${segment.code}」下仍有 ${count} 个测点，请先清理`)
     return
   }
+  if (handoverVersion(segment.id) > 0) {
+    ElMessage.error(`洞段「${segment.code}」已有交接快照，请先到「洞段交接」删除快照`)
+    return
+  }
   await ElMessageBox.confirm(`确认删除洞段「${segment.code}」？`, '删除确认', { type: 'warning' })
   await segmentStore.getState().remove(segment.id)
   ElMessage.success('洞段已删除')
@@ -229,10 +248,25 @@ async function removeSegment(segment: Segment): Promise<void> {
       <el-table-column label="测点数" width="90">
         <template #default="{ row }: { row: Segment }">{{ stationCount(row.id) }}</template>
       </el-table-column>
+      <el-table-column label="交接版本" width="120">
+        <template #default="{ row }: { row: Segment }">
+          <el-button
+            v-if="handoverVersion(row.id) > 0"
+            link
+            type="primary"
+            size="small"
+            @click="openHandover(row.id)"
+          >
+            <el-icon><Promotion /></el-icon>v{{ handoverVersion(row.id) }}
+          </el-button>
+          <el-button v-else link type="info" size="small" @click="openHandover(row.id)">未交接</el-button>
+        </template>
+      </el-table-column>
       <el-table-column prop="sketchNo" label="草图序号" width="100" />
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }: { row: Segment }">
           <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="primary" size="small" @click="openHandover(row.id)">交接</el-button>
           <el-button link type="danger" size="small" @click="removeSegment(row)">删除</el-button>
         </template>
       </el-table-column>

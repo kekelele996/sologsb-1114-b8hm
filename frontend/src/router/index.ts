@@ -21,6 +21,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '测点读数' }
   },
   {
+    path: '/handover',
+    name: 'handover',
+    component: () => import('@/pages/HandoverPage.vue'),
+    meta: { title: '洞段交接' }
+  },
+  {
     path: '/sketch',
     name: 'sketch',
     component: () => import('@/pages/SketchPage.vue'),

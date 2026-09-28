@@ -1,23 +1,25 @@
 import { onUnmounted, reactive } from 'vue'
 import type { StoreApi } from 'zustand/vanilla'
 import Dexie, { type Table } from 'dexie'
-import type { Cave, Segment, Sketch, Station } from '@/types'
+import type { Cave, HandoverSnapshot, Segment, Sketch, Station } from '@/types'
 import { computeHorizontal, computeVertical } from '@/utils/survey'
+import { buildSnapshot } from '@/utils/handover'
 
 /** IndexedDB 数据结构版本号（升级迁移时使用） */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：洞穴 / 洞段 / 测点 / 草图 四张表 + 元数据表 */
+/** Dexie 封装：洞穴 / 洞段 / 测点 / 草图 / 交接快照 五张表 + 元数据表 */
 class CaveSurveyDb extends Dexie {
   caves!: Table<Cave, string>
   segments!: Table<Segment, string>
   stations!: Table<Station, string>
   sketches!: Table<Sketch, string>
+  handoverSnapshots!: Table<HandoverSnapshot, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -30,7 +32,7 @@ class CaveSurveyDb extends Dexie {
       meta: 'key'
     })
     // v2：旧版测点记录缺少水平距/垂距，迁移时由斜距 + 倾角补齐
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         caves: 'id, name, region, archived',
         segments: 'id, caveId, code, type',
@@ -51,6 +53,15 @@ class CaveSurveyDb extends Dexie {
             }
           })
       })
+    // v3：新增洞段交接快照表，仅建表无需迁移历史数据
+    this.version(SCHEMA_VERSION).stores({
+      caves: 'id, name, region, archived',
+      segments: 'id, caveId, code, type',
+      stations: 'id, segmentId, code, date',
+      sketches: 'id, segmentId, code, mergeOrder',
+      handoverSnapshots: 'id, segmentId, version',
+      meta: 'key'
+    })
   }
 }
 
@@ -211,4 +222,22 @@ export async function seedDemoData(): Promise<void> {
       imageNote: '竖井剖面草图，标注三处锚点'
     }
   ])
+
+  // 示例交接快照：C-01 已交过一班（v1），便于直接看到版本与偏差对比
+  const demoStationsA = await db.stations.where('segmentId').equals(segmentA).toArray()
+  const demoSketchesA = await db.sketches.where('segmentId').equals(segmentA).toArray()
+  const demoSegmentA = await db.segments.get(segmentA)
+  if (demoSegmentA) {
+    const demoSnapshot = buildSnapshot({
+      segment: demoSegmentA,
+      stations: demoStationsA,
+      sketches: demoSketchesA,
+      version: 1,
+      handedBy: '陆昀',
+      note: '入口廊道两站已闭合复核，交下一班续测 C-02。'
+    })
+    demoSnapshot.id = 'hs_demo_001'
+    demoSnapshot.confirmedAt = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString()
+    await db.handoverSnapshots.put(demoSnapshot)
+  }
 }
